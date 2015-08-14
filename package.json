@@ -1,0 +1,17 @@
+{
+  "name": "red-rpc",
+  "version": "1.0.0",
+  "description": "Redis RPC",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "redis",
+    "rpc",
+    "service",
+    "discovery"
+  ],
+  "author": "Daniil Sobol",
+  "license": "ISC"
+}
