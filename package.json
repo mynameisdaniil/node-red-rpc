@@ -13,5 +13,13 @@
     "discovery"
   ],
   "author": "Daniil Sobol",
-  "license": "ISC"
+  "license": "ISC",
+  "dependencies": {
+    "curry": "^1.2.0",
+    "hiredis": "^0.4.0",
+    "maybe2": "^0.1.4",
+    "redis": "^0.12.1",
+    "uuid": "^2.0.1",
+    "yaff": "^0.1.5"
+  }
 }

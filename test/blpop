@@ -1,0 +1,1 @@
+return redis.call('BLPOP', 'rpc:results:9f400d17-02e4-4fd3-82d4-a9a63399b79f', 'rpc:tasks:ServiceB', 1)
