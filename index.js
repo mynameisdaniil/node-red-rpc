@@ -1,6 +1,7 @@
 var redis     = require('redis');
 var yaff      = require('yaff');
 var uuid      = require('uuid').v4;
+var EE        = require('events').EventEmitter;
 var serialize = JSON.stringify;
 var parse     = JSON.parse;
 
@@ -11,19 +12,21 @@ var ins = require('util').inspect; //jshint ignore:line
 var SERVICE_INDEX_NAME   = 'services';
 var METHOD_INDEX_PREFIX  = 'methods:';
 var TASKS_QUEUE_PREFIX   = 'tasks:';
-var RUNNING_QUEUE_PREFIX = 'running:';
 var RESULTS_QUEUE_PREFIX = 'results:';
 
 var RedRpc = module.exports = function (opts) {
   opts = opts || {};
   this.redis         = redis.createClient(opts);
   this.opts          = opts;
-  this.timeout       = opts.timeout || 10000;
+  this.timeout       = opts.timeout || 100;
   this.prefix        = opts.prefix || 'rpc:';
   this.runtime_id    = opts.runtime_id || uuid();
   this.service_cache = {};
   this.callbacks     = {};
   this.to_listen     = [this.prefix + RESULTS_QUEUE_PREFIX + this.runtime_id];
+  this.msg_bus       = new EE();
+
+  this.msg_bus.on('call', this._processCall.bind(this)).on('cb', this._processCB.bind(this));
   this._listen();
 };
 
@@ -31,20 +34,15 @@ var non_empty = function (item) { return !!item; };
 
 RedRpc.prototype._listen = function () {
   var self = this;
-  // log('to_listen', this.to_listen);
   yaff(this.to_listen)
     .parMap(function (key) {
       self.redis.lpop(key, this);
     })
     .flatten()
-    .map(JSON.parse)
+    .map(parse)
     .filter(non_empty)
-    .parMap(function (item) {
-      log('item:', item);
-      if (item.service) 
-        self._processCall(item, this);
-      else
-        self._processCB(item, this);
+    .forEach(function (item) {
+      self.msg_bus.emit(item.service ? 'call':'cb', item);
     })
     .finally(function () {
       setImmediate(function () {
@@ -53,31 +51,30 @@ RedRpc.prototype._listen = function () {
     });
 };
 
-RedRpc.prototype._processCB = function (item, cb) {
-  log('!!!!!');
+RedRpc.prototype._processCB = function (item) {
   var cb_obj = this.callbacks[item.corr_id];
   if (cb_obj) {
     clearTimeout(cb_obj.timeout);
     cb_obj.cb.apply(cb_obj.cb, item.args);
   }
-  cb();
 };
 
-RedRpc.prototype._processCall = function (call_obj, cb) {
+RedRpc.prototype._processCall = function (call_obj) {
   var self = this;
   var service = this.service_cache[call_obj.service];
   if (service) {
     var method = service[call_obj.method];
     if (method) {
       return method.apply(service, call_obj.args.concat(function () {
-        log('Calling callback', call_obj.corr_id);
         var args = Array.prototype.slice.call(arguments);
         var ret_obj = {corr_id: call_obj.corr_id, args: args};
-        self.redis.lpush(self.prefix + RESULTS_QUEUE_PREFIX + call_obj.runtime_id, serialize(ret_obj), cb);
+        self.redis.lpush(self.prefix + RESULTS_QUEUE_PREFIX + call_obj.runtime_id, serialize(ret_obj), function (e) {
+          if (e)
+            err(e);
+        });
       }));
     }
   }
-  cb();
 };
 
 RedRpc.prototype.publishService = function (descriptor, instance, cb) {
@@ -136,7 +133,7 @@ RedRpc.prototype._createCallWrapper = function (service_name, method_name) {
   return function () {
     if (!arguments.length)
       throw new Error('There should be callback at least');
-    var args    = Array.prototype.slice.call(arguments, 1);
+    var args    = Array.prototype.slice.call(arguments, 0, arguments.length-1);
     var cb      = arguments[arguments.length - 1];
     var corr_id = uuid();
     var timeout = createTimeout(self.timeout, corr_id, service_name, method_name, self.callbacks);

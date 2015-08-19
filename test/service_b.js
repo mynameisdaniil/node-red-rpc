@@ -8,7 +8,7 @@ ServiceB.prototype.callA = function (cb) {
     if (e)
       throw e;
     ServiceA.echo('Hello world!', function (e, reply) {
-      log('callA.getService.echo');
+      log('callA.getService.echo', arguments);
       if (e)
         throw e;
       log('Reply is:', reply);
